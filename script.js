@@ -1,723 +1,308 @@
-// Initialize Lucide Icons
-lucide.createIcons();
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm'
 
-// Supabase Configuration
-const SUPABASE_URL = 'https://arqkzpnqfceqzrymzrnf.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFycWt6cG5xZmNlcXpyeW16cm5mIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI2OTI1MzgsImV4cCI6MjA4ODI2ODUzOH0.XIBiWsg1oUcvlxmPXacA5pRWmDL6CgWku3r6CbDuk8Y';
-let supabaseClient = null;
+// --- SUPABASE CONFIGURATION ---
+// Replace these with your actual Supabase project details
+const SUPABASE_URL = 'https://qrxdkovubjbpbonykjfa.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFyeGRrb3Z1YmpicGJvbnlramZhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1NDExOTYsImV4cCI6MjA4ODExNzE5Nn0.JSVZdNQVtsCd2EGqRiqg5kTMFMoBwDXT1uwfYhnNMes';
 
-try {
-    supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    console.log("Supabase initialized successfully");
-} catch (e) {
-    console.error("Supabase initialization failed", e);
-}
+// Initialize Supabase client
+const supabase = (SUPABASE_URL && SUPABASE_URL !== 'YOUR_SUPABASE_URL') 
+    ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+    : null;
 
-// State
-let resources = [];
-let folders = [];
-let currentFolderId = null;
-let activeInputMode = 'url'; // 'url' or 'file'
-let contextMenuItem = null; // Stores the item currently targeted by context menu
+// --- PRODUCT MANAGEMENT ---
+let products = [];
+let currentCategory = 'All Products';
 
-// DOM Elements
-const newsFeed = document.getElementById('news-feed');
-const resourceGallery = document.getElementById('resource-gallery');
-const chatWidget = document.getElementById('chat-widget');
-const openChatBtn = document.getElementById('open-chat');
-const closeChatBtn = document.getElementById('close-chat');
-const chatInput = document.getElementById('chat-input');
-const sendChatBtn = document.getElementById('send-chat');
-const chatMessages = document.getElementById('chat-messages');
-
-const quickAddToggle = document.getElementById('quick-add-toggle');
-const quickAddMenu = document.getElementById('quick-add-menu');
-const addModal = document.getElementById('add-modal');
-const folderModal = document.getElementById('folder-modal');
-const moveModal = document.getElementById('move-modal');
-const newsModal = document.getElementById('news-modal');
-const deleteModal = document.getElementById('delete-modal');
-const addResourceForm = document.getElementById('add-resource-form');
-const addFolderForm = document.getElementById('add-folder-form');
-
-const resTypeSelect = document.getElementById('res-type');
-const customTypeContainer = document.getElementById('custom-type-container');
-const toggleUrlBtn = document.getElementById('toggle-url');
-const toggleFileBtn = document.getElementById('toggle-file');
-const urlInputContainer = document.getElementById('url-input-container');
-const fileInputContainer = document.getElementById('file-input-container');
-const resFileInput = document.getElementById('res-file');
-const fileNameDisplay = document.getElementById('file-name-display');
-const toastContainer = document.getElementById('toast-container');
-const breadcrumbsContainer = document.getElementById('breadcrumbs');
-const contextMenu = document.getElementById('context-menu');
-
-// Functions
-function showToast(message, icon = 'info') {
-    const toast = document.createElement('div');
-    toast.className = 'toast';
-    toast.innerHTML = `
-        <i data-lucide="${icon}" class="w-4 h-4"></i>
-        <span>${message}</span>
-    `;
-    toastContainer.appendChild(toast);
-    lucide.createIcons();
-
-    setTimeout(() => {
-        toast.classList.add('fade-out');
-        setTimeout(() => toast.remove(), 300);
-    }, 4000);
-}
-
-async function copyToClipboard(text) {
-    try {
-        await navigator.clipboard.writeText(text);
-        showToast("Copied to clipboard!", "check-circle");
-    } catch (err) {
-        console.error('Failed to copy: ', err);
-    }
-}
-
-// Modal Handlers
-function openModal() {
-    addModal.classList.add('active');
-    quickAddMenu.classList.remove('active');
-}
-
-function closeModal() {
-    addModal.classList.remove('active');
-    addResourceForm.reset();
-    document.getElementById('modal-title').textContent = 'Add New Resource';
-    document.getElementById('submit-btn-text').textContent = 'Save Resource';
-    customTypeContainer.classList.add('hidden');
-    setInputMode('url');
-    fileNameDisplay.classList.add('hidden');
-    contextMenuItem = null;
-}
-
-function openFolderModal() {
-    folderModal.classList.add('active');
-    quickAddMenu.classList.remove('active');
-}
-
-function closeFolderModal() {
-    folderModal.classList.remove('active');
-    addFolderForm.reset();
-}
-
-function openMoveModal(item) {
-    contextMenuItem = item;
-    moveModal.classList.add('active');
-    renderFolderListForMove();
-}
-
-function closeMoveModal() {
-    moveModal.classList.remove('active');
-    contextMenuItem = null;
-}
-
-function openOfflineModal(path) {
-    const modal = document.getElementById('offline-modal');
-    const input = document.getElementById('offline-path-input');
-    input.value = path;
-    modal.classList.remove('hidden');
-    modal.classList.add('flex');
-}
-
-function closeOfflineModal() {
-    const modal = document.getElementById('offline-modal');
-    modal.classList.add('hidden');
-    modal.classList.remove('flex');
-}
-
-function openNewsModal() {
-    newsModal.classList.add('active');
-    renderNews();
-}
-
-function closeNewsModal() {
-    newsModal.classList.remove('active');
-}
-
-function openDeleteModal(item) {
-    contextMenuItem = item;
-    document.getElementById('delete-item-name').textContent = item.name || item.title;
-    deleteModal.classList.add('active');
-}
-
-function closeDeleteModal() {
-    deleteModal.classList.remove('active');
-    contextMenuItem = null;
-}
-
-function copyOfflinePath() {
-    const input = document.getElementById('offline-path-input');
-    copyToClipboard(input.value);
-}
-
-// Data Fetching
-async function fetchResources() {
-    if (!supabaseClient) {
-        resources = [];
-        folders = [];
-        renderResources();
+async function fetchProducts() {
+    if (!supabase) {
+        console.warn('Supabase not configured. Using local data.');
+        products = JSON.parse(localStorage.getItem('edu_products')) || [
+            { id: 1, name: "Smartphone X", price: 599, category: "ELECTRONICS", image: "https://picsum.photos/seed/phone/400/300" },
+            { id: 2, name: "Designer Jacket", price: 120, category: "FASHION", image: "https://picsum.photos/seed/jacket/400/300" },
+            { id: 3, name: "Wireless Earbuds", price: 80, category: "ELECTRONICS", image: "https://picsum.photos/seed/earbuds/400/300" },
+            { id: 4, name: "Coffee Maker", price: 45, category: "HOME", image: "https://picsum.photos/seed/coffee/400/300" },
+            { id: 5, name: "Running Shoes", price: 95, category: "FASHION", image: "https://picsum.photos/seed/shoes/400/300" },
+            { id: 6, name: "Smart Watch", price: 199, category: "ELECTRONICS", image: "https://picsum.photos/seed/watch/400/300" },
+            { id: 7, name: "Gaming Mouse", price: 60, category: "ELECTRONICS", image: "https://picsum.photos/seed/mouse/400/300" },
+            { id: 8, name: "Backpack", price: 50, category: "FASHION", image: "https://picsum.photos/seed/backpack/400/300" }
+        ];
         return;
     }
 
-    try {
-        // Fetch Folders
-        let folderQuery = supabaseClient.from('folders').select('*');
-        if (currentFolderId) {
-            folderQuery = folderQuery.eq('parent_id', currentFolderId);
-        } else {
-            folderQuery = folderQuery.is('parent_id', null);
-        }
-        const { data: fData, error: fErr } = await folderQuery.order('name', { ascending: true });
+    let query = supabase
+        .from('products')
+        .select('*')
+        .order('id', { ascending: true });
 
-        // Fetch Resources
-        let resourceQuery = supabaseClient.from('resources').select('*');
-        if (currentFolderId) {
-            resourceQuery = resourceQuery.eq('folder_id', currentFolderId);
-        } else {
-            resourceQuery = resourceQuery.is('folder_id', null);
-        }
-        const { data: rData, error: rErr } = await resourceQuery.order('created_at', { ascending: false });
+    if (currentCategory !== 'All Products') {
+        query = query.eq('category', currentCategory.toUpperCase());
+    }
 
-        if (fErr && fErr.code !== 'PGRST116' && fErr.code !== '42P01') throw fErr; // 42P01 is table not found
-        if (rErr) throw rErr;
-        
-        folders = fData || [];
-        resources = rData || [];
-        renderResources();
-        renderBreadcrumbs();
-    } catch (err) {
-        console.error("Error fetching data:", err);
-        showToast("Failed to fetch data", "alert-circle");
+    const { data, error } = await query;
+
+    if (error) {
+        console.error('Error fetching products:', error);
+    } else {
+        products = data;
     }
 }
 
-// Rendering
-function getResourceIcon(type) {
-    switch (type) {
-        case 'Book': return 'book';
-        case 'Video': return 'play-circle';
-        case 'Website': return 'globe';
-        case 'PDF': return 'file-text';
-        default: return 'box';
-    }
-}
+// Function to render products on the main page
+function renderProducts() {
+    const grid = document.querySelector('.product-grid');
+    if (!grid) return;
 
-function renderResources() {
-    resourceGallery.innerHTML = '';
-
-    if (folders.length === 0 && resources.length === 0) {
-        resourceGallery.innerHTML = '<p class="col-span-full text-center text-slate-500 py-10">This folder is empty.</p>';
-        return;
-    }
-
-    // Render Folders
-    folders.forEach((folder, index) => {
-        const folderEl = document.createElement('div');
-        folderEl.className = 'resource-card group relative bg-[#1e293b] rounded-2xl border border-slate-800 p-4 hover:border-indigo-500 transition-all cursor-pointer animate-fade-in';
-        folderEl.style.animationDelay = `${index * 0.05}s`;
-        folderEl.innerHTML = `
-            <div class="flex items-center gap-4">
-                <div class="w-12 h-12 bg-indigo-900/30 rounded-xl flex items-center justify-center text-indigo-400">
-                    <i data-lucide="folder" class="w-6 h-6 fill-current"></i>
-                </div>
-                <div class="flex-1 min-w-0">
-                    <h3 class="font-bold text-slate-200 truncate">${folder.name}</h3>
-                    <p class="text-[10px] text-slate-500 truncate">${folder.description || 'Folder'}</p>
-                </div>
-                <button class="more-btn p-2 text-slate-500 hover:text-white rounded-lg hover:bg-slate-800 transition-colors relative z-10">
-                    <i data-lucide="more-vertical" class="w-4 h-4"></i>
-                </button>
+    grid.innerHTML = '';
+    products.forEach(product => {
+        const card = document.createElement('div');
+        card.className = 'product-card';
+        card.innerHTML = `
+            <div class="product-image-container">
+                <img src="${product.image}" alt="${product.name}" class="product-image" referrerPolicy="no-referrer">
             </div>
-        `;
-        
-        folderEl.addEventListener('click', (e) => {
-            if (e.target.closest('.more-btn')) {
-                e.stopPropagation();
-                showContextMenu(e, folder, 'folder');
-            } else {
-                navigateToFolder(folder.id);
-            }
-        });
-        
-        resourceGallery.appendChild(folderEl);
-    });
-
-    // Render Resources
-    resources.forEach((res, index) => {
-        const resEl = document.createElement('div');
-        resEl.className = 'resource-card group relative bg-[#1e293b] rounded-2xl border border-slate-800 p-4 hover:border-indigo-500 transition-all cursor-pointer animate-fade-in';
-        resEl.style.animationDelay = `${(folders.length + index) * 0.05}s`;
-        
-        const icon = getResourceIcon(res.type);
-        const displayUrl = res.link_url || '#';
-        const isOffline = res.is_offline;
-        
-        resEl.innerHTML = `
-            <div class="flex items-start gap-4">
-                <div class="w-12 h-12 bg-slate-800 rounded-xl flex items-center justify-center text-slate-400 group-hover:text-indigo-400 transition-colors">
-                    <i data-lucide="${icon}" class="w-6 h-6"></i>
-                </div>
-                <div class="flex-1 min-w-0">
-                    <div class="flex items-center justify-between gap-2">
-                        <h3 class="font-bold text-slate-200 truncate">${res.title}</h3>
-                        <button class="more-btn p-1 text-slate-500 hover:text-white rounded transition-colors relative z-10">
-                            <i data-lucide="more-vertical" class="w-4 h-4"></i>
-                        </button>
-                    </div>
-                    <p class="text-xs text-slate-500 truncate mb-2">${res.author || 'Unknown'}</p>
-                    <div class="flex items-center gap-2">
-                        <span class="text-[10px] font-bold text-indigo-400 flex items-center gap-1">
-                            <i data-lucide="${isOffline ? 'hard-drive' : 'external-link'}" class="w-3 h-3"></i>
-                            ${isOffline ? 'View Path' : 'Open'}
-                        </span>
-                        <span class="text-[10px] text-slate-600">•</span>
-                        <span class="text-[10px] text-slate-500">${res.type}</span>
-                    </div>
+            <div class="product-info">
+                <div class="product-category">${product.category || 'GENERAL'}</div>
+                <h3 class="product-title">${product.name}</h3>
+                <div class="product-footer">
+                    <p class="product-price">$${product.price}</p>
+                    <button class="add-to-cart-btn" onclick="addToCart(${product.id})">+</button>
                 </div>
             </div>
         `;
-
-        resEl.addEventListener('click', (e) => {
-            if (e.target.closest('.more-btn')) {
-                e.stopPropagation();
-                showContextMenu(e, res, 'resource');
-            } else {
-                if (isOffline) {
-                    openOfflineModal(res.link_url);
-                } else {
-                    window.open(displayUrl, '_blank');
-                }
-            }
-        });
-
-        resourceGallery.appendChild(resEl);
+        grid.appendChild(card);
     });
-
-    lucide.createIcons();
 }
 
-async function renderBreadcrumbs() {
-    breadcrumbsContainer.innerHTML = `
-        <button onclick="navigateToFolder(null)" class="hover:text-indigo-400 flex items-center gap-1">
-            <i data-lucide="home" class="w-3 h-3"></i>
-            Root
-        </button>
-    `;
-
-    if (currentFolderId) {
-        try {
-            // In a real app, you'd fetch the full path. Here we just show the current folder name for simplicity
-            const { data: folder } = await supabaseClient.from('folders').select('name').eq('id', currentFolderId).single();
-            if (folder) {
-                breadcrumbsContainer.innerHTML += `
-                    <i data-lucide="chevron-right" class="w-3 h-3"></i>
-                    <span class="text-slate-300 font-medium">${folder.name}</span>
-                `;
-            }
-        } catch (err) {
-            console.error(err);
-        }
-    }
-    lucide.createIcons();
-}
-
-function navigateToFolder(id) {
-    currentFolderId = id;
-    fetchResources();
-}
-
-// Context Menu Logic
-function showContextMenu(e, item, type) {
-    contextMenuItem = { ...item, itemType: type };
-    contextMenu.style.display = 'block';
-    contextMenu.style.left = `${e.clientX}px`;
-    contextMenu.style.top = `${e.clientY}px`;
-    
-    // Adjust position if it goes off screen
-    const menuRect = contextMenu.getBoundingClientRect();
-    if (menuRect.right > window.innerWidth) {
-        contextMenu.style.left = `${e.clientX - menuRect.width}px`;
-    }
-    if (menuRect.bottom > window.innerHeight) {
-        contextMenu.style.top = `${e.clientY - menuRect.height}px`;
-    }
-}
-
-function hideContextMenu() {
-    contextMenu.style.display = 'none';
-}
-
-// Actions
-async function deleteItem() {
-    if (!contextMenuItem) return;
-    const { id, itemType } = contextMenuItem;
-
-    try {
-        const table = itemType === 'folder' ? 'folders' : 'resources';
-        const { error } = await supabaseClient.from(table).delete().eq('id', id);
-        if (error) throw error;
-        
-        showToast(`Deleted ${itemType}`, "trash-2");
-        fetchResources();
-    } catch (err) {
-        console.error("Delete operation failed:", err);
-        showToast(`Delete failed: ${err.message || 'Unknown error'}`, "alert-circle");
-    } finally {
-        closeDeleteModal();
-    }
-}
-
-async function renderFolderListForMove() {
-    const listContainer = document.getElementById('folder-list-move');
-    listContainer.innerHTML = '<p class="text-xs text-slate-500 text-center py-4">Loading folders...</p>';
-    
-    try {
-        const { data: allFolders, error } = await supabaseClient.from('folders').select('*').order('name', { ascending: true });
-        if (error) throw error;
-
-        listContainer.innerHTML = `
-            <button onclick="selectFolderForMove(null)" class="w-full text-left px-4 py-3 rounded-xl border border-slate-800 hover:border-indigo-500 transition-all flex items-center gap-3 bg-slate-900/50 mb-2">
-                <i data-lucide="home" class="w-4 h-4 text-slate-500"></i>
-                <span class="text-sm text-slate-300">Root Directory</span>
-            </button>
-        `;
-
-        const buildTree = (parentId, container) => {
-            const children = (allFolders || []).filter(f => f.parent_id === parentId);
-            children.forEach(f => {
-                if (contextMenuItem.itemType === 'folder' && f.id === contextMenuItem.id) return;
-                
-                const itemWrapper = document.createElement('div');
-                itemWrapper.className = 'mb-1';
-                
-                const btnWrapper = document.createElement('div');
-                btnWrapper.className = 'flex items-center gap-1';
-                
-                const hasChildren = allFolders.some(child => child.parent_id === f.id);
-                
-                if (hasChildren) {
-                    const toggle = document.createElement('button');
-                    toggle.className = 'p-1 hover:bg-slate-800 rounded text-slate-500 tree-toggle';
-                    toggle.innerHTML = '<i data-lucide="chevron-right" class="w-4 h-4"></i>';
-                    toggle.onclick = (e) => {
-                        e.stopPropagation();
-                        const childContainer = itemWrapper.querySelector('.tree-node');
-                        childContainer.classList.toggle('expanded');
-                        toggle.classList.toggle('expanded');
-                    };
-                    btnWrapper.appendChild(toggle);
-                } else {
-                    const spacer = document.createElement('div');
-                    spacer.className = 'w-6';
-                    btnWrapper.appendChild(spacer);
-                }
-
-                const btn = document.createElement('button');
-                btn.onclick = () => selectFolderForMove(f.id);
-                btn.className = 'flex-1 text-left px-4 py-2 rounded-xl border border-slate-800 hover:border-indigo-500 transition-all flex items-center gap-3 bg-slate-900/50';
-                btn.innerHTML = `
-                    <i data-lucide="folder" class="w-4 h-4 text-indigo-400"></i>
-                    <span class="text-sm text-slate-300">${f.name}</span>
-                `;
-                btnWrapper.appendChild(btn);
-                itemWrapper.appendChild(btnWrapper);
-                
-                if (hasChildren) {
-                    const childContainer = document.createElement('div');
-                    childContainer.className = 'tree-node';
-                    buildTree(f.id, childContainer);
-                    itemWrapper.appendChild(childContainer);
-                }
-                
-                container.appendChild(itemWrapper);
-            });
-        };
-
-        buildTree(null, listContainer);
-        lucide.createIcons();
-    } catch (err) {
-        console.error("Error rendering folder tree:", err);
-        listContainer.innerHTML = '<p class="text-xs text-red-400 text-center py-4">Failed to load folders.</p>';
-    }
-}
-
-let selectedFolderIdForMove = null;
-window.selectFolderForMove = (id) => {
-    selectedFolderIdForMove = id;
-    // Highlight selection
-    document.querySelectorAll('#folder-list-move button').forEach(btn => {
-        btn.classList.remove('border-indigo-500', 'bg-indigo-500/10');
-    });
-    event.currentTarget.classList.add('border-indigo-500', 'bg-indigo-500/10');
+// Cart Logic
+let cartCount = 0;
+window.addToCart = function(id) {
+    cartCount++;
+    const cartCountElement = document.getElementById('cart-count');
+    if (cartCountElement) cartCountElement.textContent = cartCount;
+    alert('Added to cart!');
 };
 
-async function confirmMove() {
-    if (!contextMenuItem) return;
-    
-    try {
-        const table = contextMenuItem.itemType === 'folder' ? 'folders' : 'resources';
-        const column = contextMenuItem.itemType === 'folder' ? 'parent_id' : 'folder_id';
-        
-        const { error } = await supabaseClient.from(table).update({ [column]: selectedFolderIdForMove }).eq('id', contextMenuItem.id);
-        if (error) throw error;
-        
-        showToast("Moved successfully", "folder-input");
-        closeMoveModal();
-        fetchResources();
-    } catch (err) {
-        console.error(err);
-        showToast("Move failed", "alert-circle");
-    }
+// Admin Page Logic
+function renderAdminTable() {
+    const tableBody = document.getElementById('admin-product-body');
+    if (!tableBody) return;
+
+    tableBody.innerHTML = '';
+    products.forEach((product, index) => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>${product.id}</td>
+            <td><img src="${product.image}" width="50" style="border-radius:4px"></td>
+            <td>${product.name}</td>
+            <td>$${product.price}</td>
+            <td>
+                <button class="edit-btn" onclick="editProduct(${index})">Edit</button>
+                <button class="delete-btn" onclick="deleteProduct(${index})">Delete</button>
+            </td>
+        `;
+        tableBody.appendChild(row);
+    });
 }
 
-// Form Submissions
-async function handleResourceSubmit(e) {
-    e.preventDefault();
-    const title = document.getElementById('res-title').value;
-    let type = document.getElementById('res-type').value;
-    if (type === 'Other') type = document.getElementById('res-custom-type').value || 'Other';
-    const author = document.getElementById('res-author').value;
-    const tags = document.getElementById('res-tags').value.split(',').map(t => t.trim()).filter(t => t);
-    const isOffline = document.getElementById('res-offline').checked;
-    const url = document.getElementById('res-url').value;
-    const file = resFileInput.files[0];
+window.deleteProduct = async function(index) {
+    if (!confirm('Are you sure you want to delete this product?')) return;
 
-    const submitBtn = addResourceForm.querySelector('button[type="submit"]');
-    submitBtn.disabled = true;
-    const originalText = submitBtn.innerHTML;
-    submitBtn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Saving...';
-    lucide.createIcons();
+    const product = products[index];
+    
+    if (supabase) {
+        const { error } = await supabase
+            .from('products')
+            .delete()
+            .eq('id', product.id);
 
-    let finalUrl = url;
-    if (activeInputMode === 'file' && file && supabaseClient) {
-        try {
-            const fileExt = file.name.split('.').pop();
-            const fileName = `${Math.random()}.${fileExt}`;
-            const { data, error } = await supabaseClient.storage.from('resources').upload(`uploads/${fileName}`, file);
-            if (error) throw error;
-            const { data: { publicUrl } } = supabaseClient.storage.from('resources').getPublicUrl(`uploads/${fileName}`);
-            finalUrl = publicUrl;
-        } catch (err) {
-            console.error(err);
-            showToast("Upload failed", "alert-circle");
-            submitBtn.disabled = false;
-            submitBtn.innerHTML = originalText;
+        if (error) {
+            alert('Error deleting product: ' + error.message);
             return;
         }
-    }
-
-    try {
-        let error;
-        if (contextMenuItem && contextMenuItem.id) {
-            // Update existing
-            ({ error } = await supabaseClient.from('resources').update({
-                title, type, author, tags, link_url: finalUrl, is_offline: isOffline
-            }).eq('id', contextMenuItem.id));
-        } else {
-            // Insert new
-            ({ error } = await supabaseClient.from('resources').insert([{
-                title, type, author, tags, link_url: finalUrl, is_offline: isOffline, folder_id: currentFolderId
-            }]));
-        }
-        
-        if (error) throw error;
-        showToast(contextMenuItem ? "Resource updated!" : "Resource added!", "check");
-        closeModal();
-        fetchResources();
-    } catch (err) {
-        console.error(err);
-        showToast("Save failed", "alert-circle");
-    } finally {
-        submitBtn.disabled = false;
-        submitBtn.innerHTML = originalText;
-        lucide.createIcons();
-    }
-}
-
-async function handleFolderSubmit(e) {
-    e.preventDefault();
-    const name = document.getElementById('folder-name').value;
-    const description = document.getElementById('folder-desc').value;
-
-    try {
-        const { error } = await supabaseClient.from('folders').insert([{
-            name, description, parent_id: currentFolderId
-        }]);
-        if (error) throw error;
-        showToast("Folder created!", "folder-plus");
-        closeFolderModal();
-        fetchResources();
-    } catch (err) {
-        console.error(err);
-        showToast("Failed to create folder", "alert-circle");
-    }
-}
-
-// Chat Logic
-function addMessage(text, isUser = false) {
-    const msgDiv = document.createElement('div');
-    msgDiv.className = `flex gap-2 ${isUser ? 'flex-row-reverse' : ''} animate-fade-in`;
-    msgDiv.innerHTML = `
-        <div class="w-8 h-8 rounded-lg ${isUser ? 'bg-slate-800' : 'bg-indigo-900/50'} flex items-center justify-center shrink-0">
-            <i data-lucide="${isUser ? 'user' : 'bot'}" class="w-4 h-4 ${isUser ? 'text-slate-400' : 'text-indigo-400'}"></i>
-        </div>
-        <div class="${isUser ? 'bg-indigo-600 text-white rounded-tr-none' : 'bg-[#1e293b] text-slate-300 rounded-tl-none border border-slate-800'} p-3 rounded-2xl text-sm shadow-sm max-w-[80%]">
-            ${text}
-        </div>
-    `;
-    chatMessages.appendChild(msgDiv);
-    chatMessages.scrollTop = chatMessages.scrollHeight;
-    lucide.createIcons();
-}
-
-function handleChat() {
-    const text = chatInput.value.trim();
-    if (!text) return;
-    addMessage(text, true);
-    chatInput.value = '';
-    setTimeout(() => {
-        addMessage("I'm here to help! I can analyze your resources or help you organize your folders.");
-    }, 1000);
-}
-
-// Event Listeners
-quickAddToggle.addEventListener('click', (e) => {
-    e.stopPropagation();
-    quickAddMenu.classList.toggle('active');
-});
-
-document.addEventListener('click', () => {
-    quickAddMenu.classList.remove('active');
-    hideContextMenu();
-});
-
-resTypeSelect.addEventListener('change', (e) => {
-    customTypeContainer.classList.toggle('hidden', e.target.value !== 'Other');
-});
-
-toggleUrlBtn.addEventListener('click', () => setInputMode('url'));
-toggleFileBtn.addEventListener('click', () => setInputMode('file'));
-
-function setInputMode(mode) {
-    activeInputMode = mode;
-    toggleUrlBtn.className = mode === 'url' ? 'flex-1 py-2 text-xs font-bold rounded-lg bg-slate-800 shadow-sm text-indigo-400 transition-all' : 'flex-1 py-2 text-xs font-bold rounded-lg text-slate-500 hover:text-slate-400 transition-all';
-    toggleFileBtn.className = mode === 'file' ? 'flex-1 py-2 text-xs font-bold rounded-lg bg-slate-800 shadow-sm text-indigo-400 transition-all' : 'flex-1 py-2 text-xs font-bold rounded-lg text-slate-500 hover:text-slate-400 transition-all';
-    urlInputContainer.classList.toggle('hidden', mode !== 'url');
-    fileInputContainer.classList.toggle('hidden', mode !== 'file');
-}
-
-resFileInput.addEventListener('change', (e) => {
-    if (e.target.files.length > 0) {
-        fileNameDisplay.textContent = `Selected: ${e.target.files[0].name}`;
-        fileNameDisplay.classList.remove('hidden');
-    }
-});
-
-addResourceForm.addEventListener('submit', handleResourceSubmit);
-addFolderForm.addEventListener('submit', handleFolderSubmit);
-document.getElementById('confirm-move-btn').addEventListener('click', confirmMove);
-document.getElementById('confirm-delete-btn').addEventListener('click', deleteItem);
-
-document.getElementById('ctx-delete').addEventListener('click', () => {
-    hideContextMenu();
-    openDeleteModal(contextMenuItem);
-});
-document.getElementById('ctx-move').addEventListener('click', () => {
-    hideContextMenu();
-    openMoveModal(contextMenuItem);
-});
-document.getElementById('ctx-edit').addEventListener('click', async () => {
-    if (!contextMenuItem) return;
-    
-    if (contextMenuItem.itemType === 'folder') {
-        const oldName = contextMenuItem.name;
-        const newName = prompt(`Rename folder "${oldName}" to:`, oldName);
-        if (newName && newName !== oldName) {
-            try {
-                const { error } = await supabaseClient.from('folders').update({ name: newName }).eq('id', contextMenuItem.id);
-                if (error) throw error;
-                showToast("Folder renamed", "edit-3");
-                fetchResources();
-            } catch (err) {
-                console.error(err);
-                showToast("Rename failed", "alert-circle");
-            }
-        }
     } else {
-        // Full edit for resource
-        document.getElementById('modal-title').textContent = 'Edit Resource';
-        document.getElementById('submit-btn-text').textContent = 'Update Resource';
-        
-        document.getElementById('res-title').value = contextMenuItem.title;
-        document.getElementById('res-author').value = contextMenuItem.author || '';
-        document.getElementById('res-tags').value = (contextMenuItem.tags || []).join(', ');
-        document.getElementById('res-offline').checked = contextMenuItem.is_offline;
-        document.getElementById('res-url').value = contextMenuItem.link_url || '';
-        
-        const typeSelect = document.getElementById('res-type');
-        const standardTypes = ['Book', 'Video', 'Website', 'PDF'];
-        if (standardTypes.includes(contextMenuItem.type)) {
-            typeSelect.value = contextMenuItem.type;
-            customTypeContainer.classList.add('hidden');
-        } else {
-            typeSelect.value = 'Other';
-            customTypeContainer.classList.remove('hidden');
-            document.getElementById('res-custom-type').value = contextMenuItem.type;
-        }
-        
-        openModal();
+        products.splice(index, 1);
+        localStorage.setItem('edu_products', JSON.stringify(products));
     }
-    hideContextMenu();
-});
 
-document.getElementById('open-news-btn').addEventListener('click', openNewsModal);
-closeChatBtn.addEventListener('click', () => {
-    chatWidget.classList.add('translate-y-full', 'opacity-0', 'pointer-events-none');
-    openChatBtn.classList.remove('scale-0', 'opacity-0');
-});
+    await fetchProducts();
+    renderAdminTable();
+};
 
-openChatBtn.addEventListener('click', () => {
-    chatWidget.classList.remove('translate-y-full', 'opacity-0', 'pointer-events-none');
-    openChatBtn.classList.add('scale-0', 'opacity-0');
-});
+window.editProduct = function(index) {
+    const product = products[index];
+    document.getElementById('prod-id').value = product.id;
+    document.getElementById('prod-name').value = product.name;
+    document.getElementById('prod-price').value = product.price;
+    document.getElementById('prod-image').value = product.image;
+    if (document.getElementById('prod-category')) {
+        document.getElementById('prod-category').value = product.category || '';
+    }
+    document.getElementById('form-title').textContent = 'Edit Product';
+    document.getElementById('submit-btn').textContent = 'Update Product';
+    document.getElementById('cancel-btn').style.display = 'inline-block';
+    
+    document.getElementById('product-form').dataset.editIndex = index;
+};
 
-sendChatBtn.addEventListener('click', handleChat);
-chatInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') handleChat(); });
+// Authentication Logic
+const ADMIN_PASSWORD = "jash@123";
 
-// News Rendering
-function renderNews() {
-    const NEWS_DATA = [
-        { title: "New Breakthrough in Quantum Computing", source: "Science Daily", time: "2h ago", category: "Tech" },
-        { title: "Top 10 Study Techniques for 2024", source: "EduWeekly", time: "5h ago", category: "Education" },
-        { title: "The Future of Remote Learning", source: "Global News", time: "8h ago", category: "Society" }
-    ];
-    newsFeed.innerHTML = NEWS_DATA.map((news, index) => `
-        <div class="news-item p-4 bg-[#1e293b] rounded-xl border border-slate-800 shadow-sm transition-all cursor-pointer animate-fade-in" style="animation-delay: ${index * 0.1}s">
-            <div class="flex justify-between items-start mb-2">
-                <span class="text-[10px] font-bold uppercase tracking-wider text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded">${news.category}</span>
-                <span class="text-[10px] text-slate-500">${news.time}</span>
-            </div>
-            <h3 class="text-sm font-semibold text-slate-200 leading-snug mb-1">${news.title}</h3>
-            <p class="text-[11px] text-slate-500">${news.source}</p>
-        </div>
-    `).join('');
+window.logout = function() {
+    sessionStorage.removeItem('edu_admin_auth');
+    window.location.href = 'index.html';
+};
+
+function checkAuth() {
+    const isAuth = sessionStorage.getItem('edu_admin_auth');
+    const currentPage = window.location.pathname;
+    
+    if (currentPage.includes('admin.html') && isAuth !== 'true') {
+        window.location.href = 'login.html';
+    }
 }
 
-// Initialize
-renderNews();
-fetchResources();
+// Handle Form Submission
+document.addEventListener('DOMContentLoaded', async () => {
+    checkAuth();
+    await fetchProducts();
+    renderProducts();
+    renderAdminTable();
 
-// Expose navigation to window for breadcrumbs
-window.navigateToFolder = navigateToFolder;
-window.openModal = openModal;
-window.openFolderModal = openFolderModal;
-window.closeFolderModal = closeFolderModal;
-window.closeMoveModal = closeMoveModal;
-window.closeNewsModal = closeNewsModal;
-window.closeDeleteModal = closeDeleteModal;
-window.selectFolderForMove = selectFolderForMove;
+    // Sidebar Category Filtering
+    const sidebarLinks = document.querySelectorAll('.sidebar-nav a');
+    sidebarLinks.forEach(link => {
+        link.addEventListener('click', async (e) => {
+            e.preventDefault();
+            
+            // Update active state
+            sidebarLinks.forEach(l => l.classList.remove('active'));
+            link.classList.add('active');
+            
+            currentCategory = link.textContent;
+            await fetchProducts();
+            renderProducts();
+        });
+    });
+
+    // Search Functionality
+    const searchInput = document.querySelector('.search-container input');
+    const searchBtn = document.querySelector('.search-container button');
+
+    const handleSearch = async () => {
+        const searchTerm = searchInput.value.trim();
+        if (!supabase) {
+            // Local search
+            if (searchTerm === "") {
+                await fetchProducts();
+            } else {
+                products = products.filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()));
+            }
+            renderProducts();
+            return;
+        }
+
+        let query = supabase
+            .from('products')
+            .select('*')
+            .order('id', { ascending: true });
+
+        if (searchTerm !== "") {
+            query = query.ilike('name', `%${searchTerm}%`);
+        }
+        
+        if (currentCategory !== 'All Products') {
+            query = query.eq('category', currentCategory.toUpperCase());
+        }
+
+        const { data, error } = await query;
+        if (!error) {
+            products = data;
+            renderProducts();
+        }
+    };
+
+    if (searchBtn) searchBtn.addEventListener('click', handleSearch);
+    if (searchInput) {
+        searchInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') handleSearch();
+        });
+    }
+
+    const loginForm = document.getElementById('login-form');
+    if (loginForm) {
+        loginForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const passwordInput = document.getElementById('password').value;
+            const errorMsg = document.getElementById('login-error');
+
+            if (passwordInput === ADMIN_PASSWORD) {
+                sessionStorage.setItem('edu_admin_auth', 'true');
+                window.location.href = 'admin.html';
+            } else {
+                errorMsg.style.display = 'block';
+                document.getElementById('password').value = '';
+            }
+        });
+    }
+
+    const productForm = document.getElementById('product-form');
+    if (productForm) {
+        productForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const id = document.getElementById('prod-id').value;
+            const name = document.getElementById('prod-name').value;
+            const price = parseFloat(document.getElementById('prod-price').value);
+            const image = document.getElementById('prod-image').value;
+            const category = document.getElementById('prod-category') ? document.getElementById('prod-category').value : 'GENERAL';
+            const editIndex = productForm.dataset.editIndex;
+
+            const productData = { name, price, image, category };
+
+            if (supabase) {
+                if (editIndex !== undefined && editIndex !== "") {
+                    // Update
+                    const { error } = await supabase
+                        .from('products')
+                        .update(productData)
+                        .eq('id', parseInt(id));
+                    if (error) alert('Error updating: ' + error.message);
+                } else {
+                    // Create
+                    const { error } = await supabase
+                        .from('products')
+                        .insert([productData]);
+                    if (error) alert('Error creating: ' + error.message);
+                }
+            } else {
+                // Fallback to localStorage
+                if (editIndex !== undefined && editIndex !== "") {
+                    products[editIndex] = { id: parseInt(id), ...productData };
+                } else {
+                    products.push({ id: Date.now(), ...productData });
+                }
+                localStorage.setItem('edu_products', JSON.stringify(products));
+            }
+
+            await fetchProducts();
+            renderAdminTable();
+            productForm.reset();
+            resetForm();
+        });
+    }
+
+    const cancelBtn = document.getElementById('cancel-btn');
+    if (cancelBtn) {
+        cancelBtn.addEventListener('click', resetForm);
+    }
+
+    function resetForm() {
+        if (productForm) {
+            productForm.reset();
+            delete productForm.dataset.editIndex;
+        }
+        document.getElementById('form-title').textContent = 'Add New Product';
+        document.getElementById('submit-btn').textContent = 'Add Product';
+        if (cancelBtn) cancelBtn.style.display = 'none';
+    }
+});
