@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Balraj's Construction Logs</title>
-    <link rel="icon" type="image/png" href="https://img.icons8.com/fluency/48/construction.png">
+    <link rel="icon" type="image/png" href="https://icons8.com/icon/Ib5dT3gv7UCT/worker">
     <style>
         :root { --bg: #050508; --card: #11111a; --primary: #00f3ff; --accent: #ff00ff; --text: #e0e0e0; }
         body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 15px; }
@@ -33,10 +33,29 @@
         table { width: 100%; table-layout: fixed; border-collapse: collapse; }
         th, td { padding: 12px; text-align: left; border-bottom: 1px solid #222; }
         
-        /* Gov Table Specifics */
-        #govTable { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 14px; }
-        #govTable th { border-bottom: 2px solid #333; padding: 10px; color: #00d4ff; text-align: left; }
-        #govTable td { padding: 10px; border-bottom: 1px solid #333; text-align: left; }
+        /* Gov Table Specifics - Adjusted for your preference */
+        #govTable { 
+            width: 100%; 
+            table-layout: fixed; /* Keeps columns at the exact width we set */
+            border-collapse: collapse; 
+            margin-top: 15px; 
+        }
+
+        /* Widening the Date (35%) and setting Description (45%) */
+        #govTable th:nth-child(1), #govTable td:nth-child(1) { width: 35%; } 
+        #govTable th:nth-child(2), #govTable td:nth-child(2) { width: 45%; } 
+        #govTable th:nth-child(3), #govTable td:nth-child(3) { width: 20%; text-align: right; }
+
+        #govTable th { border-bottom: 2px solid #333; padding: 10px; color: #00d4ff; text-align: left; font-size: 14px; }
+
+        /* Manually increasing Description text size */
+        #govTable td:nth-child(2) { 
+            font-size: 16px; /* Increased size for Description */
+            font-weight: 500;
+            color: #ffffff;
+        }
+
+        #govTable td { padding: 12px 5px; border-bottom: 1px solid #333; font-size: 13px; }
 
         @media screen and (max-width: 600px) {
             table { font-size: 11px; }
